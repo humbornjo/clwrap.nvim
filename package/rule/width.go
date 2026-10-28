@@ -64,12 +64,14 @@ func reflowProse(lines []string, textWidth, tolerance int, exemptedPrefixes []st
 }
 
 // indentColumns returns the rendered width of leading whitespace at
-// four-column tab stops.
+// two-column tab stops.
 func indentColumns(indent string) int {
+	const tabWidth = 2
+
 	width := 0
 	for _, r := range indent {
 		if r == '\t' {
-			width += 4 - width%4
+			width += tabWidth - width%tabWidth
 		} else {
 			width++
 		}

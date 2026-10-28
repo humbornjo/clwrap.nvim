@@ -114,9 +114,9 @@ func TestRule_Pipe(t *testing.T) {
 				"}\n",
 			want: "func Run() {\n" +
 				"\tif true {\n" +
-				"\t\t// A deeply nested comment\n" +
-				"\t\t// should wrap at the configured\n" +
-				"\t\t// display width.\n" +
+				"\t\t// A deeply nested comment should\n" +
+				"\t\t// wrap at the configured display\n" +
+				"\t\t// width.\n" +
 				"\t}\n" +
 				"}\n",
 			short: 60,
