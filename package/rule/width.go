@@ -26,7 +26,7 @@ func (w Width) Rewrite(class comment.Class, marker, text string) string {
 		boundary, tolerance = w.Decl, w.Tolerance
 	}
 	indent, lines := areaLines(text, marker)
-	textWidth := boundary - len(indent) - len(marker) - 1
+	textWidth := boundary - indentColumns(indent) - len(marker) - 1
 	if textWidth < 1 {
 		textWidth = 1
 	}
@@ -61,6 +61,20 @@ func reflowProse(lines []string, textWidth, tolerance int, exemptedPrefixes []st
 		out = append(out, b.String())
 	}
 	return out
+}
+
+// indentColumns returns the rendered width of leading whitespace at
+// four-column tab stops.
+func indentColumns(indent string) int {
+	width := 0
+	for _, r := range indent {
+		if r == '\t' {
+			width += 4 - width%4
+		} else {
+			width++
+		}
+	}
+	return width
 }
 
 // tolerated reports whether the tolerance lets the next word end past the

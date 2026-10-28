@@ -8,6 +8,8 @@ Reflows standalone `//` line comments in Go, TypeScript, TSX, Rust, and Zig unde
 
 Left untouched: trailing comments on code lines, `/* */` block comments (including JSDoc), language-specific directive lines, and structured paragraphs inside a reflowed group. `ExemptedPrefixes` configures the prefix-based exemptions; its defaults are space, tab, `- `, `* `, and `+ `. Numbered list items, doc link definitions, and prose-led paragraphs that mix text with list items also keep their layout. A directive splits its group, and the prose runs around it still reflow. TypeScript directives include triple-slash lines, `@ts-` comments, ESLint/TSLint, Prettier, Biome, Istanbul, and c8 annotations. Rust preserves `rustfmt::` controls; Zig preserves `zig fmt:` controls. In both languages `///` and `//!` runs reflow with their exact markers, while `////` comments stay verbatim.
 
+Both widths count indentation tabs at four-column tab stops, so nested comments wrap against their rendered line width.
+
 Go files with the standard generated marker (`// Code generated … DO NOT EDIT.`) are never rewritten; stdout mode passes them through whole.
 
 ## Usage

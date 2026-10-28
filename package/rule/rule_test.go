@@ -106,6 +106,23 @@ func TestRule_Pipe(t *testing.T) {
 			long:  100,
 		},
 		{
+			name: "body comment width expands indentation tabs",
+			src: "func Run() {\n" +
+				"\tif true {\n" +
+				"\t\t// A deeply nested comment should wrap at the configured display width.\n" +
+				"\t}\n" +
+				"}\n",
+			want: "func Run() {\n" +
+				"\tif true {\n" +
+				"\t\t// A deeply nested comment\n" +
+				"\t\t// should wrap at the configured\n" +
+				"\t\t// display width.\n" +
+				"\t}\n" +
+				"}\n",
+			short: 60,
+			long:  40,
+		},
+		{
 			name: "field doc joins to long",
 			src: "type C struct {\n" +
 				"\t// Path is a field doc comment\n" +
