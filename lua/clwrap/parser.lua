@@ -1,9 +1,12 @@
-local languages = require("clwrap.languages")
+local languages = require("clwrap.lang")
 local rules = require("clwrap.rules")
 
 local M = {}
 
-local function comment_nodes(root, comment_types)
+-- Every supported grammar uses one of these three node names.
+local comment_types = { comment = true, line_comment = true, block_comment = true }
+
+local function comment_nodes(root)
   local result = {}
   local stack = { root }
   while #stack > 0 do
@@ -43,7 +46,7 @@ local function standalone_comment(source, lines, node, spec)
 end
 
 local function extract_regions(source, lines, root, spec)
-  local nodes = comment_nodes(root, spec.comment_types)
+  local nodes = comment_nodes(root)
   local comments = {}
   for _, node in ipairs(nodes) do
     comments[#comments + 1] = standalone_comment(source, lines, node, spec) or false
@@ -132,11 +135,6 @@ local function equal_lines(left, right)
   return true
 end
 
----@class clwrap.Edit
----@field start_row integer Zero-based inclusive start row.
----@field end_row integer Zero-based exclusive end row.
----@field lines string[] Replacement lines.
-
 ---Compute comment-only edits for source lines without modifying a buffer.
 ---@param lines string[]
 ---@param opts clwrap.ResolvedConfig|{lang?: string}
@@ -177,32 +175,6 @@ function M.edits(lines, opts)
     end
   end
   return edits
-end
-
----@param bufnr integer
----@param edits clwrap.Edit[]
-function M.apply(bufnr, edits)
-  for i = #edits, 1, -1 do
-    local edit = edits[i]
-    vim.api.nvim_buf_set_lines(bufnr, edit.start_row, edit.end_row, false, edit.lines)
-  end
-end
-
----@param lines string[]
----@param edits clwrap.Edit[]
----@return string[]
-function M.render(lines, edits)
-  lines = vim.deepcopy(lines)
-  for i = #edits, 1, -1 do
-    local edit = edits[i]
-    for _ = edit.start_row + 1, edit.end_row do
-      table.remove(lines, edit.start_row + 1)
-    end
-    for j = #edit.lines, 1, -1 do
-      table.insert(lines, edit.start_row + 1, edit.lines[j])
-    end
-  end
-  return lines
 end
 
 return M

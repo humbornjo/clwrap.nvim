@@ -134,6 +134,54 @@ test("go: tolerance rejects a word starting beyond the boundary", function()
   )
 end)
 
+local lua_cases = {
+  {
+    name = "declaration docs retain their marker",
+    src = "--- Run documents the declaration in one long line that must wrap at the short width boundary.\nlocal function run() end\n",
+    want = "--- Run documents the declaration in one long line that must\n--- wrap at the short width boundary.\nlocal function run() end\n",
+  },
+  {
+    name = "module variable docs use the short width",
+    src = "--- Module documentation written\n--- in narrow lines.\nlocal M = {}\nreturn M\n",
+    want = "--- Module documentation written in narrow lines.\nlocal M = {}\nreturn M\n",
+  },
+  {
+    name = "inner prose uses the long width",
+    src = "local function run()\n  -- inner prose written\n  -- in narrow lines\nend\n",
+    want = "local function run()\n  -- inner prose written in narrow lines\nend\n",
+  },
+  {
+    name = "LuaLS annotations split prose runs",
+    src = "--- Run documents the declaration in one long line that must wrap at the short width boundary.\n---@param value string\n---@return boolean\nlocal function run(value) return true end\n",
+    want = "--- Run documents the declaration in one long line that must\n--- wrap at the short width boundary.\n---@param value string\n---@return boolean\nlocal function run(value) return true end\n",
+  },
+  {
+    name = "blocks trailing comments and directives",
+    src = "---- A decorative comment keeps its layout.\n--[[ A long comment keeps its layout. ]]\n--[=[ A bracketed long comment also keeps its layout. ]=]\n-- stylua: ignore\n--!strict\n-- selene: allow(unused_variable)\n-- luacheck: ignore\nlocal value = 1 -- trailing prose stays exactly here\n",
+    want = "---- A decorative comment keeps its layout.\n--[[ A long comment keeps its layout. ]]\n--[=[ A bracketed long comment also keeps its layout. ]=]\n-- stylua: ignore\n--!strict\n-- selene: allow(unused_variable)\n-- luacheck: ignore\nlocal value = 1 -- trailing prose stays exactly here\n",
+  },
+  {
+    name = "comment markers in strings",
+    src = 'local text = "-- this string is not a comment and must never be reformatted"\n',
+    want = 'local text = "-- this string is not a comment and must never be reformatted"\n',
+  },
+}
+
+for _, case in ipairs(lua_cases) do
+  test("lua: " .. case.name, function()
+    eq(case.want, reflow("lua", case.src))
+  end)
+end
+
+test("lua: syntax errors leave the source unchanged", function()
+  local bufnr = make_buffer("lua", "local function broken( {\n")
+  local before = vim.api.nvim_buf_get_lines(bufnr, 0, -1, false)
+  local changed, err = clwrap.format(bufnr, default_opts)
+  eq(nil, changed)
+  assert(err:match("syntax errors"), err)
+  eq(before, vim.api.nvim_buf_get_lines(bufnr, 0, -1, false))
+end)
+
 local rust_cases = {
   {
     name = "outer doc markers",
@@ -308,6 +356,26 @@ test("a single virt-column sets the general width", function()
   package.loaded["virt-column.config"] = previous
 end)
 
+test("setup replaces earlier options and validates its input", function()
+  clwrap.setup({ doc_width = 88, comment_width = 99, virtcolumn = false })
+  clwrap.setup({ virtcolumn = false })
+  local bufnr = make_buffer("go", "package p\n")
+  local resolved = config.resolve(bufnr)
+  eq(75, resolved.doc_width)
+  eq(120, resolved.comment_width)
+  eq(true, clwrap.did_setup)
+  eq(1, #vim.api.nvim_get_autocmds({ group = "clwrap", event = "BufWritePre" }))
+
+  local ok, err = pcall(clwrap.setup, { comment_width = "80" })
+  eq(false, ok)
+  assert(tostring(err):match("comment_width must be a number"), err)
+  ok, err = pcall(clwrap.setup, { comment_with = 80 })
+  eq(false, ok)
+  assert(tostring(err):match("unknown option"), err)
+  eq(120, config.resolve(bufnr).comment_width)
+  clwrap.setup({})
+end)
+
 test("none-ls generator returns formatted buffer text", function()
   local src =
     "// Run documents the declaration in one long line that must wrap at the short width boundary.\nfunc Run() {}\n"
@@ -334,6 +402,7 @@ test("batch formats below Neovim's cwd and ignores dependency directories", func
 
   write(vim.fs.joinpath(root, "main.go"), go_cases[1].src)
   write(vim.fs.joinpath(root, "nested", "other.go"), go_cases[1].src)
+  write(vim.fs.joinpath(root, "nested", "other.lua"), lua_cases[1].src)
   write(vim.fs.joinpath(root, "node_modules", "ignored.go"), go_cases[1].src)
   write(vim.fs.joinpath(root, "notes.txt"), go_cases[1].src)
 
@@ -346,14 +415,15 @@ test("batch formats below Neovim's cwd and ignores dependency directories", func
     virtcolumn = false,
   })
   vim.api.nvim_set_current_dir(previous_cwd)
-  eq(2, #report.formatted)
+  eq(3, #report.formatted)
   eq(0, #report.errors)
   eq(go_cases[1].want, read(vim.fs.joinpath(root, "main.go")))
   eq(go_cases[1].want, read(vim.fs.joinpath(root, "nested", "other.go")))
+  eq(lua_cases[1].want, read(vim.fs.joinpath(root, "nested", "other.lua")))
   eq(go_cases[1].src, read(vim.fs.joinpath(root, "node_modules", "ignored.go")))
 
   report = clwrap.format_all(root, { doc_width = 60, comment_width = 100, editorconfig = false, virtcolumn = false })
-  eq(2, #report.unchanged)
+  eq(3, #report.unchanged)
   eq(0, #report.formatted)
 end)
 

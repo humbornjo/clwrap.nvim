@@ -1,20 +1,20 @@
 # clwrap
 
-`clwrap` is a Lua Neovim plugin that reflows standalone `//` comments in Go, TypeScript, TSX, Rust, and Zig. It uses Neovim's installed Tree-sitter parsers directly: no Go runtime, CGo, external executable, or subprocess.
+`clwrap` is a Lua Neovim plugin that reflows standalone `//` comments in Go, TypeScript, TSX, Rust, and Zig, and `--` comments in Lua. It uses Neovim's installed Tree-sitter parsers directly: no Go runtime, CGo, external executable, or subprocess.
 
 - Documentation attached to top-level named declarations wraps to `doc_width` (default 75).
 - Other standalone comments wrap to `comment_width` (default 120).
 - `tolerance` lets a doc-comment word that starts inside the boundary finish up to N columns beyond it.
-- Rust and Zig preserve `///` and `//!`; Markdown list continuations join into one line per item.
+- Rust and Zig preserve `///` and `//!`; Lua preserves `---`; Markdown list continuations join into one line per item.
 - Indentation and words use display columns. Tabs use the buffer's `tabstop`, including `.editorconfig`'s `tab_width`.
 - Generated Go files and buffers with syntax errors stay unchanged.
 
-Trailing comments, block comments (including JSDoc), four-slash comments, tooling directives, and structured paragraphs retain their layout. Directive lines split a comment group, and the prose on either side still reflows.
+Trailing comments, block comments (including JSDoc and Lua long comments), four-slash comments, tooling directives, and structured paragraphs retain their layout. Directive lines split a comment group, and the prose on either side still reflows. LuaLS `---@...` annotations, Luau `--!...` controls, and StyLua, Selene, and Luacheck directives are preserved.
 
 ## Requirements
 
 - Neovim 0.10 or newer.
-- Tree-sitter parser libraries for `go`, `typescript`, `tsx`, `rust`, and `zig`.
+- Tree-sitter parser libraries for `go`, `lua`, `typescript`, `tsx`, `rust`, and `zig`.
 - Optional: [none-ls.nvim](https://github.com/nvimtools/none-ls.nvim) for `vim.lsp.buf.format()` and format-on-save integration.
 - Optional: [virt-column.nvim](https://github.com/lukas-reineke/virt-column.nvim) for width discovery.
 
@@ -25,7 +25,7 @@ return {
   "AstroNvim/astrocore",
   opts = {
     treesitter = {
-      ensure_installed = { "go", "typescript", "tsx", "rust", "zig" },
+      ensure_installed = { "go", "lua", "typescript", "tsx", "rust", "zig" },
     },
   },
 }
@@ -166,9 +166,15 @@ The tests run headlessly against the Tree-sitter parsers available to Neovim. TS
 
 The implementation is split by responsibility:
 
-- `lua/clwrap/parser.lua` — string parsing, comment-run extraction, and line edits.
-- `lua/clwrap/languages.lua` — grammar-specific markers, directives, and declaration classification.
+- `lua/clwrap/init.lua` — the small public Lua interface and idempotent setup.
+- `lua/clwrap/formatter.lua` — buffer validation, option resolution, and formatting.
+- `lua/clwrap/parser.lua` — string parsing, comment-run extraction, and edit computation.
+- `lua/clwrap/edit.lua` — shared edit application and rendering.
+- `lua/clwrap/lang/` — the language registry and one Tree-sitter policy adapter per grammar.
 - `lua/clwrap/rules.lua` — language-neutral list and width rules.
 - `lua/clwrap/config.lua` — EditorConfig, virt-column, and override resolution.
+- `lua/clwrap/commands.lua` and `save.lua` — lazy command callbacks and the save lifecycle.
 - `lua/clwrap/batch.lua` — recursive discovery, safe file writes, and batch reports.
 - `lua/clwrap/none_ls.lua` — the optional in-process none-ls source.
+
+Command callbacks load formatting modules only when invoked. Internal modules depend on concrete modules rather than calling back through `require("clwrap")`, so the public facade does not introduce dependency cycles. Calling `setup()` again replaces previous setup options and recreates a single save hook.

@@ -1,4 +1,4 @@
-local languages = require("clwrap.languages")
+local languages = require("clwrap.lang")
 local parser = require("clwrap.parser")
 
 return {
@@ -16,7 +16,7 @@ return {
       if #edits == 0 then
         return {}
       end
-      return { { text = table.concat(parser.render(params.content, edits), "\n") } }
+      return { { text = table.concat(require("clwrap.edit").render(params.content, edits), "\n") } }
     end,
   },
 }

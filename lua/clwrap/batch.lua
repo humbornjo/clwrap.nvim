@@ -1,4 +1,4 @@
-local languages = require("clwrap.languages")
+local languages = require("clwrap.lang")
 
 local M = {}
 local uv = vim.uv or vim.loop
@@ -65,7 +65,7 @@ local function format_file(path, opts)
     require("editorconfig").config(bufnr)
   end
 
-  local changed, err = require("clwrap").format(bufnr, opts)
+  local changed, err = require("clwrap.formatter").format(bufnr, opts)
   if changed == nil then
     cleanup()
     return nil, err

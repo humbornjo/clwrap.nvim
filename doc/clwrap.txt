@@ -11,11 +11,11 @@ CONTENTS                                                       *clwrap-contents*
 ==============================================================================
 1. Setup                                                          *clwrap-setup*
 
-clwrap supports Go, TypeScript, TSX, Rust, and Zig on Neovim 0.10+. Install the
+clwrap supports Go, Lua, TypeScript, TSX, Rust, and Zig on Neovim 0.10+. Install the
 corresponding Tree-sitter parser libraries with nvim-treesitter. Mason's
 tree-sitter-cli executable is not used.
 
-Optional configuration: >lua
+Optional configuration (calling setup again replaces earlier options): >lua
 
   require("clwrap").setup({
     tolerance = 0,

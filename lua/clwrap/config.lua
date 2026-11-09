@@ -27,21 +27,54 @@ M.defaults = {
   format_on_save = false,
 }
 
+local option_types = {
+  doc_width = "number",
+  comment_width = "number",
+  tolerance = "number",
+  exempted_prefixes = "table",
+  editorconfig = "boolean",
+  virtcolumn = "boolean",
+  format_on_save = "boolean",
+  lang = "string",
+}
+
 local function copy(value)
   return vim.deepcopy(value)
+end
+
+local function validate(opts)
+  if type(opts) ~= "table" then
+    error("clwrap: setup options must be a table", 3)
+  end
+  for key, value in pairs(opts) do
+    local expected = option_types[key]
+    if not expected then
+      error(("clwrap: unknown option %q"):format(key), 3)
+    end
+    if type(value) ~= expected then
+      error(("clwrap: %s must be a %s"):format(key, expected), 3)
+    end
+  end
+  for _, prefix in ipairs(opts.exempted_prefixes or {}) do
+    if type(prefix) ~= "string" then
+      error("clwrap: exempted_prefixes must contain only strings", 3)
+    end
+  end
 end
 
 M.options = copy(M.defaults)
 M.options.doc_width = nil
 M.options.comment_width = nil
 
+---Replace setup options rather than merging into an earlier setup call.
 ---@param opts clwrap.Config?
 function M.setup(opts)
   opts = opts or {}
-  M.options = vim.tbl_deep_extend("force", copy(M.options), opts)
-  if opts.exempted_prefixes then
-    M.options.exempted_prefixes = copy(opts.exempted_prefixes)
-  end
+  validate(opts)
+  M.options = vim.tbl_deep_extend("force", copy(M.defaults), opts)
+  M.options.doc_width = opts.doc_width
+  M.options.comment_width = opts.comment_width
+  M.options.exempted_prefixes = copy(opts.exempted_prefixes or M.defaults.exempted_prefixes)
 end
 
 local function positive_integer(value)
