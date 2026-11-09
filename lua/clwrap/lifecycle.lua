@@ -1,8 +1,22 @@
 local M = {}
 
----Install the save hook. Repeated calls replace the previous hook atomically.
+local function check_filetype(bufnr)
+  local lang = require("clwrap.lang").filetypes[vim.bo[bufnr].filetype]
+  if lang then
+    require("clwrap.parser").available(lang)
+  end
+end
+
+---Install buffer-loading and save hooks. Repeated calls replace them atomically.
 function M.setup()
   local group = vim.api.nvim_create_augroup("clwrap", { clear = true })
+  vim.api.nvim_create_autocmd("FileType", {
+    group = group,
+    callback = function(event)
+      check_filetype(event.buf)
+    end,
+    desc = "Warn once when a supported comment parser is unavailable",
+  })
   vim.api.nvim_create_autocmd("BufWritePre", {
     group = group,
     callback = function(event)
@@ -20,6 +34,7 @@ function M.setup()
     end,
     desc = "Reflow comments before writing",
   })
+  check_filetype(vim.api.nvim_get_current_buf())
 end
 
 return M
