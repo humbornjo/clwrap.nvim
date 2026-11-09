@@ -1,0 +1,84 @@
+*clwrap.txt*  Reflow standalone line comments with Tree-sitter
+
+==============================================================================
+CONTENTS                                                       *clwrap-contents*
+
+1. Setup                                                        |clwrap-setup|
+2. Usage                                                        |clwrap-usage|
+3. Widths                                                      |clwrap-widths|
+4. none-ls                                                    |clwrap-none-ls|
+
+==============================================================================
+1. Setup                                                          *clwrap-setup*
+
+clwrap supports Go, Lua, TypeScript, TSX, Rust, and Zig on Neovim 0.10+. Install the
+corresponding Tree-sitter parser libraries with nvim-treesitter. Mason's
+tree-sitter-cli executable is not used.
+
+Optional configuration (calling setup again replaces earlier options): >lua
+
+  require("clwrap").setup({
+    tolerance = 0,
+    editorconfig = true,
+    virtcolumn = true,
+    format_on_save = false,
+  })
+<
+==============================================================================
+2. Usage                                                          *clwrap-usage*
+
+:Clwrap                                                               *:Clwrap*
+
+Reflow standalone comments in the current buffer. Trailing comments, block
+comments, directives, generated Go files, and source with syntax errors are
+left unchanged.
+
+:ClwrapAll [root]                                                   *:ClwrapAll*
+
+Format every supported file below Neovim's current working directory, or below
+[root] when supplied. Dot/underscore directories, vendor, node_modules, and
+testdata are ignored. Modified buffers are skipped. Batch writes do not trigger
+save autocommands.
+
+Format on save is disabled by default. Enable it and optionally override the
+setting per buffer: >lua
+
+  require("clwrap").setup({ format_on_save = true })
+  vim.b.clwrap_format_on_save = false
+<
+Use this hook or none-ls save integration for clwrap, not both.
+
+Lua API: >lua
+
+  require("clwrap").format()
+  require("clwrap").format(0, { doc_width = 75, comment_width = 120 })
+  local report = require("clwrap").format_all()
+  local edits, err = require("clwrap").edits(0)
+<
+==============================================================================
+3. Widths                                                        *clwrap-widths*
+
+Top-level declaration documentation defaults to 75 columns. Other standalone
+comments default to 120. Per-call and buffer-local values override setup
+values. b:clwrap_doc_width and b:clwrap_comment_width set buffer-local widths.
+
+EditorConfig max_line_length sets the general comment width. Its tab_width is
+applied by Neovim and used when calculating indentation.
+
+With multiple virt-column entries, the smallest is the doc width and the
+largest is the general width. One entry sets the general width, with doc width
+capped at min(75, general width). Relative columns use 'textwidth'.
+
+==============================================================================
+4. none-ls                                                      *clwrap-none-ls*
+
+Add the in-process source to none-ls: >lua
+
+  require("null-ls").setup({
+    sources = { require("clwrap.none_ls") },
+  })
+<
+This enables vim.lsp.buf.format() and existing format-on-save integrations.
+No clwrap executable is required.
+
+vim:tw=78:ts=8:noet:ft=help:norl:

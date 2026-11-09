@@ -1,60 +1,180 @@
 # clwrap
 
-Reflows standalone `//` line comments in Go, TypeScript, TSX, Rust, and Zig under two width constraints. Go uses `go/ast`; the other languages use Tree-sitter behind the same language-neutral comment pipeline. Rust and Zig also preserve their `///` and `//!` doc-comment markers.
+`clwrap` is a Lua Neovim plugin that reflows standalone `//` comments in Go, TypeScript, TSX, Rust, and Zig, and `--` comments in Lua. It uses Neovim's installed Tree-sitter parsers directly: no Go runtime, CGo, external executable, or subprocess.
 
-- **Doc comments on top-level named declarations** wrap to the **short** width (default 75, `-doc-width`) with an optional **straddle tolerance** (`-tolerance N`, default 0): a word that starts inside the boundary may end up to N columns past it; a word starting past the boundary wraps. For Go this includes the package clause and top-level funcs and specs; for TypeScript it includes adjacent comments on top-level functions, classes, interfaces, types, enums, variables, and namespaces, exported or not. Rust covers top-level items, including declarations after attributes; Zig covers top-level functions, variables, and tests.
-- **Every other standalone comment** — function bodies, methods, fields, interface members, and detached file-header comments — joins and wraps to the **long** width (default 120, `-comment-width`).
-- **Markdown list items** (`- `, `* `, `+ `, `N. `) join their continuation lines into one line per item and may exceed the tier width.
+- Documentation attached to top-level named declarations wraps to `doc_width` (default 75).
+- Other standalone comments wrap to `comment_width` (default 120).
+- `tolerance` lets a doc-comment word that starts inside the boundary finish up to N columns beyond it.
+- Rust and Zig preserve `///` and `//!`; Lua preserves `---`; Markdown list continuations join into one line per item.
+- Indentation and words use display columns. Tabs use the buffer's `tabstop`, including `.editorconfig`'s `tab_width`.
+- Generated Go files and buffers with syntax errors stay unchanged.
 
-Left untouched: trailing comments on code lines, `/* */` block comments (including JSDoc), language-specific directive lines, and structured paragraphs inside a reflowed group. `ExemptedPrefixes` configures the prefix-based exemptions; its defaults are space, tab, `- `, `* `, and `+ `. Numbered list items, doc link definitions, and prose-led paragraphs that mix text with list items also keep their layout. A directive splits its group, and the prose runs around it still reflow. TypeScript directives include triple-slash lines, `@ts-` comments, ESLint/TSLint, Prettier, Biome, Istanbul, and c8 annotations. Rust preserves `rustfmt::` controls; Zig preserves `zig fmt:` controls. In both languages `///` and `//!` runs reflow with their exact markers, while `////` comments stay verbatim.
+Trailing comments, block comments (including JSDoc and Lua long comments), four-slash comments, tooling directives, and structured paragraphs retain their layout. Directive lines split a comment group, and the prose on either side still reflows. LuaLS `---@...` annotations, Luau `--!...` controls, and StyLua, Selene, and Luacheck directives are preserved.
 
-Go files with the standard generated marker (`// Code generated … DO NOT EDIT.`) are never rewritten; stdout mode passes them through whole.
+## Requirements
+
+- Neovim 0.10 or newer.
+- Tree-sitter parser libraries for `go`, `lua`, `typescript`, `tsx`, `rust`, and `zig`.
+- Optional: [none-ls.nvim](https://github.com/nvimtools/none-ls.nvim) for `vim.lsp.buf.format()` and format-on-save integration.
+- Optional: [virt-column.nvim](https://github.com/lukas-reineke/virt-column.nvim) for width discovery.
+
+Mason's `tree-sitter-cli` package is **not** used. Install parser libraries through `nvim-treesitter`, for example in AstroNvim:
+
+```lua
+return {
+  "AstroNvim/astrocore",
+  opts = {
+    treesitter = {
+      ensure_installed = { "go", "lua", "typescript", "tsx", "rust", "zig" },
+    },
+  },
+}
+```
+
+Run `:checkhealth clwrap` to check the parsers Neovim can load.
+
+## Installation
+
+With `lazy.nvim`, using this local checkout:
+
+```lua
+return {
+  {
+    dir = "~/Repository/clwrap",
+    opts = {},
+  },
+}
+```
+
+Replace `dir` with the plugin's repository URL if installing from Git. `opts = {}` calls `require("clwrap").setup({})`; setup is only needed to change defaults. The `:Clwrap` command also works without calling setup.
 
 ## Usage
 
-```
-clwrap file.go             # print formatted Go source to stdout
-clwrap file.ts             # TypeScript is detected by extension
-clwrap file.tsx            # TSX uses the TSX grammar
-clwrap file.rs             # Rust uses Tree-sitter
-clwrap file.zig            # Zig uses Tree-sitter
-clwrap -w ./...            # rewrite every supported file beneath the current directory
-clwrap -dryrun ./...       # list the files -w would rewrite, writing nothing
-clwrap -w service/...      # same, rooted at service/
-clwrap - < file.go         # stdin defaults to Go
-clwrap --lang typescript - < file.ts
-clwrap --lang tsx - < file.tsx
-clwrap --lang rust - < file.rs
-clwrap --lang zig - < file.zig
-clwrap report ./...        # per-directory comment hygiene table, tokei style
+Run `:Clwrap` to reflow the current buffer. Run `:ClwrapAll` to format every supported file below Neovim's current working directory, or pass another root:
+
+```vim
+:Clwrap
+:ClwrapAll
+:ClwrapAll ~/Repository/another-project
 ```
 
-Supported extensions are `.go`, `.ts`, `.mts`, `.cts`, `.tsx`, `.rs`, and `.zig`. Explicit files with other extensions are rejected rather than parsed as Go. `--lang` selects the stdin grammar and accepts `go`, `typescript` (or `ts`), `tsx`, `rust`, and `zig`.
+The batch command skips dot/underscore directories, `vendor`, `node_modules`, and `testdata`. Modified buffers are skipped rather than saving unrelated edits. It reports formatted, unchanged, skipped, and failed counts; batch writes do not trigger save autocommands.
 
-The `report` subcommand formats in memory, writes nothing, and tallies the comment-line change per directory: files seen, files the reflow would rewrite, comment lines before/after, and the signed diff — the most changed directories first. Only directories containing files the reflow would rewrite get rows; the total still covers every supported file. `--limit N` selects the number of rows (default 10, 0 = all), with the rest folded into an `other` row. The table is styled after tokei: `━` rules spanning the terminal width, ANSI colors on a terminal (`NO_COLOR` disables). It accepts the same width flags; stdin is not a report input.
+The same operations are available from Lua:
 
-Args are files, directories, `dir/...` recursive patterns, or `-` for stdin. Directory walks ignore dot/underscore directories, `vendor`, `node_modules`, and `testdata`. Flags: `--doc-width N` (75), `--tolerance N` (0), `--comment-width N` (120), `-w`/`--write`, `-d`/`--dryrun`, and `--lang` for stdin. Output is idempotent; Go output remains gofmt-stable.
+```lua
+require("clwrap").format()
+require("clwrap").format(0, { doc_width = 75, comment_width = 120, tolerance = 2 })
 
-Building requires CGo and a C compiler because the Tree-sitter runtime and language grammars compile as C.
+-- Defaults to getcwd() when root is omitted.
+local report = require("clwrap").format_all()
+-- report.formatted, report.unchanged, report.skipped, report.errors
 
-## Layout
+-- Compute edits without changing the buffer.
+local edits, err = require("clwrap").edits(0)
+```
 
-A stream pipeline: a language adapter extracts comment areas, the rule set transforms them, and each area's single write overrides its region.
+Formatting is idempotent. A missing parser, unsupported filetype, or syntax error returns an error and leaves the source untouched.
 
-- `main.go` — CLI wiring only (urfave/cli/v3, the fuss command pattern)
-- `config/` — the rule configuration: DocWidth + Tolerance, CommentWidth, ExemptedPrefixes
-- `command/internal/walk` — positional-arg expansion and supported-file discovery
-- `command/fmt` — file/stdin IO, exit codes, and pipeline invocation
-- `command/report` — in-memory format, per-directory tally, tokei-style table
-- `package/comment` — language-neutral classes, areas, comment streams, and byte-range replacement
-- `package/astx` — the `Parser` interface, adapter registry, extension detection, and explicit language selection
-- `package/astx/lang/go` — the Go adapter using `go/ast`
-- `package/astx/lang/internal/tree` — grammar-neutral Tree-sitter traversal, grouping, and span handling; adapters inject language policy
-- `package/astx/lang/typescript` — the TypeScript and TSX adapter using Tree-sitter
-- `package/astx/lang/rust` — the Rust adapter, including doc markers, rustfmt directives, and declaration classification
-- `package/astx/lang/zig` — the Zig adapter, including doc markers, zig fmt directives, and declaration classification
-- `package/rule` — marker-aware `Rule` + `Set` chain and the `Pipe` stream driver; `Apply` configures the standard `List` → `Width` pipeline, `Width` carries tier boundaries and prefix exemptions, and `List` owns markdown list items
+### Format on save
 
-## Neovim
+Enable clwrap's own `BufWritePre` hook during setup:
 
-For Go, run after the normal formatter (gopls) as a comment bonus: astrolsp's `format_on_save` ignores `go`, and a `BufWritePre *.go` autocmd in astrocore pipes the buffer through `clwrap -` after `vim.lsp.buf.format`. A buffer that fails to parse keeps the LSP-formatted text. For Tree-sitter-backed buffers, pass `--lang typescript`, `--lang tsx`, `--lang rust`, or `--lang zig` explicitly.
+```lua
+require("clwrap").setup({
+  format_on_save = true,
+})
+```
+
+It is disabled by default. Override the global setting for one buffer with:
+
+```lua
+vim.b.clwrap_format_on_save = false -- or true
+```
+
+Use either this hook or an external formatter's save integration for clwrap, not both; running both is idempotent but parses the buffer twice.
+
+### none-ls integration
+
+Add the supplied source to your existing `none-ls` configuration. In AstroNvim, merge it into `opts.sources` rather than replacing other formatters:
+
+```lua
+return {
+  "nvimtools/none-ls.nvim",
+  opts = function(_, opts)
+    opts.sources = require("astrocore").list_insert_unique(opts.sources, {
+      require("clwrap.none_ls"),
+    })
+  end,
+}
+```
+
+For a plain `none-ls` setup:
+
+```lua
+local null_ls = require("null-ls")
+null_ls.setup({
+  sources = {
+    require("clwrap.none_ls"),
+    -- Your other sources.
+  },
+})
+```
+
+The source runs in process and parses `none-ls`'s current formatter-chain text. `vim.lsp.buf.format()` therefore works normally, as does AstroLSP's `format_on_save`. Keep language formatting such as `gopls`, `rustfmt`, or Prettier enabled; clwrap only changes comments.
+
+If your checked-in `lua/plugins/none-ls.lua` starts with an early `return {}` that disables the file, remove that line before adding the source.
+
+## Configuration
+
+Defaults:
+
+```lua
+require("clwrap").setup({
+  doc_width = nil, -- nil enables automatic discovery; fallback 75
+  comment_width = nil, -- nil enables automatic discovery; fallback 120
+  tolerance = 0,
+  exempted_prefixes = { " ", "\t", "- ", "* ", "+ " },
+  editorconfig = true,
+  virtcolumn = true,
+  format_on_save = false,
+})
+```
+
+Widths are resolved again for every format call:
+
+1. Per-call options, `b:clwrap_doc_width`, `b:clwrap_comment_width`, then values explicitly passed to `setup()`.
+2. `.editorconfig` `max_line_length` sets `comment_width`. Neovim's built-in EditorConfig support also applies `tab_width` to `tabstop`.
+3. With two or more usable `virt-column` entries, the smallest sets `doc_width` and the largest sets `comment_width`. Relative entries such as `+1` resolve against `textwidth`, just as they do in virt-column.
+4. A single usable virt-column entry sets `comment_width`; `doc_width` becomes `min(75, comment_width)`.
+5. Otherwise, the defaults are 75 and 120. If only `comment_width` is known, doc width is capped at that value.
+
+`virt-column`'s display can be enabled or disabled independently; its configured columns are still readable. Buffer-local explicit widths are useful for project or filetype overrides:
+
+```lua
+vim.b.clwrap_doc_width = 80
+vim.b.clwrap_comment_width = 100
+```
+
+## Development
+
+```sh
+make test
+```
+
+The tests run headlessly against the Tree-sitter parsers available to Neovim. TSX tests are skipped when its parser is not installed.
+
+The implementation is split by responsibility:
+
+- `lua/clwrap/init.lua` — the small public Lua interface and idempotent setup.
+- `lua/clwrap/formatter.lua` — buffer validation, option resolution, and formatting.
+- `lua/clwrap/parser.lua` — string parsing, comment-run extraction, and edit computation.
+- `lua/clwrap/edit.lua` — shared edit application and rendering.
+- `lua/clwrap/lang/` — the language registry and one Tree-sitter policy adapter per grammar.
+- `lua/clwrap/rules.lua` — language-neutral list and width rules.
+- `lua/clwrap/config.lua` — EditorConfig, virt-column, and override resolution.
+- `lua/clwrap/commands.lua` and `save.lua` — lazy command callbacks and the save lifecycle.
+- `lua/clwrap/batch.lua` — recursive discovery, safe file writes, and batch reports.
+- `lua/clwrap/none_ls.lua` — the optional in-process none-ls source.
+
+Command callbacks load formatting modules only when invoked. Internal modules depend on concrete modules rather than calling back through `require("clwrap")`, so the public facade does not introduce dependency cycles. Calling `setup()` again replaces previous setup options and recreates a single save hook.
