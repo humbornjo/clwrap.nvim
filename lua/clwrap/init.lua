@@ -5,7 +5,7 @@ M.did_setup = false
 ---@return clwrap
 function M.setup(opts)
   require("clwrap.config").setup(opts)
-  require("clwrap.save").setup()
+  require("clwrap.lifecycle").setup()
   M.did_setup = true
   return M
 end

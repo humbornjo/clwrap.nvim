@@ -18,35 +18,26 @@ Trailing comments, block comments (including JSDoc and Lua long comments), four-
 - Optional: [none-ls.nvim](https://github.com/nvimtools/none-ls.nvim) for `vim.lsp.buf.format()` and format-on-save integration.
 - Optional: [virt-column.nvim](https://github.com/lukas-reineke/virt-column.nvim) for width discovery.
 
-Mason's `tree-sitter-cli` package is **not** used. Install parser libraries through `nvim-treesitter`, for example in AstroNvim:
+Mason's `tree-sitter-cli` package is **not** used. Install parser libraries through `nvim-treesitter`:
 
-```lua
-return {
-  "AstroNvim/astrocore",
-  opts = {
-    treesitter = {
-      ensure_installed = { "go", "lua", "typescript", "tsx", "rust", "zig" },
-    },
-  },
-}
+```vim
+:TSInstall go lua typescript tsx rust zig
 ```
 
 Run `:checkhealth clwrap` to check the parsers Neovim can load.
 
 ## Installation
 
-With `lazy.nvim`, using this local checkout:
+With [lazy.nvim](https://github.com/folke/lazy.nvim):
 
 ```lua
 return {
-  {
-    dir = "~/Repository/clwrap",
-    opts = {},
-  },
+  "humbornjo/clwrap.nvim",
+  opts = {},
 }
 ```
 
-Replace `dir` with the plugin's repository URL if installing from Git. `opts = {}` calls `require("clwrap").setup({})`; setup is only needed to change defaults. The `:Clwrap` command also works without calling setup.
+`opts = {}` calls `require("clwrap").setup({})`; setup is only needed to change defaults. The `:Clwrap` command also works without calling setup.
 
 ## Usage
 
@@ -74,7 +65,7 @@ local report = require("clwrap").format_all()
 local edits, err = require("clwrap").edits(0)
 ```
 
-Formatting is idempotent. A missing parser, unsupported filetype, or syntax error returns an error and leaves the source untouched.
+Formatting is idempotent. An unsupported filetype or syntax error returns an error and leaves the source untouched. A missing parser leaves the source unchanged and shows one warning per language with its `:TSInstall` command; later attempts skip silently. Installing the parser makes formatting available without restarting Neovim.
 
 ### Format on save
 
@@ -96,20 +87,7 @@ Use either this hook or an external formatter's save integration for clwrap, not
 
 ### none-ls integration
 
-Add the supplied source to your existing `none-ls` configuration. In AstroNvim, merge it into `opts.sources` rather than replacing other formatters:
-
-```lua
-return {
-  "nvimtools/none-ls.nvim",
-  opts = function(_, opts)
-    opts.sources = require("astrocore").list_insert_unique(opts.sources, {
-      require("clwrap.none_ls"),
-    })
-  end,
-}
-```
-
-For a plain `none-ls` setup:
+Add the supplied source to your existing `none-ls` configuration, preserving your other sources:
 
 ```lua
 local null_ls = require("null-ls")
@@ -121,24 +99,41 @@ null_ls.setup({
 })
 ```
 
-The source runs in process and parses `none-ls`'s current formatter-chain text. `vim.lsp.buf.format()` therefore works normally, as does AstroLSP's `format_on_save`. Keep language formatting such as `gopls`, `rustfmt`, or Prettier enabled; clwrap only changes comments.
-
-If your checked-in `lua/plugins/none-ls.lua` starts with an early `return {}` that disables the file, remove that line before adding the source.
+The source runs in process and parses `none-ls`'s current formatter-chain text. `vim.lsp.buf.format()` and existing `none-ls` format-on-save integrations therefore work normally. Keep language formatting such as `gopls`, `rustfmt`, or Prettier enabled; clwrap only changes comments.
 
 ## Configuration
 
-Defaults:
+All settings are optional. The example below shows the complete setup configuration and its defaults; copy only the options you want to change.
 
 ```lua
 require("clwrap").setup({
-  doc_width = nil, -- nil enables automatic discovery; fallback 75
-  comment_width = nil, -- nil enables automatic discovery; fallback 120
+  -- Width for top-level declaration documentation. nil enables discovery; fallback: 75.
+  doc_width = nil,
+
+  -- Width for other standalone comments. nil enables discovery; fallback: 120.
+  comment_width = nil,
+
+  -- Let a doc-comment word finish this many columns beyond the wrap boundary.
   tolerance = 0,
+
+  -- Preserve the layout of paragraphs beginning with these prefixes.
   exempted_prefixes = { " ", "\t", "- ", "* ", "+ " },
+
+  -- Read max_line_length from Neovim's EditorConfig integration.
   editorconfig = true,
+
+  -- Read wrapping columns from virt-column.nvim when available.
   virtcolumn = true,
+
+  -- Format supported buffers from clwrap's BufWritePre hook.
   format_on_save = false,
 })
+```
+
+For the rare case where the Tree-sitter language differs from the buffer's filetype, pass `lang` to an individual format call. Automatic detection is recommended for normal use:
+
+```lua
+require("clwrap").format(0, { lang = "typescript" })
 ```
 
 Widths are resolved again for every format call:
@@ -173,8 +168,8 @@ The implementation is split by responsibility:
 - `lua/clwrap/lang/` — the language registry and one Tree-sitter policy adapter per grammar.
 - `lua/clwrap/rules.lua` — language-neutral list and width rules.
 - `lua/clwrap/config.lua` — EditorConfig, virt-column, and override resolution.
-- `lua/clwrap/commands.lua` and `save.lua` — lazy command callbacks and the save lifecycle.
+- `lua/clwrap/commands.lua` and `lifecycle.lua` — lazy command callbacks and buffer-loading/save lifecycle.
 - `lua/clwrap/batch.lua` — recursive discovery, safe file writes, and batch reports.
 - `lua/clwrap/none_ls.lua` — the optional in-process none-ls source.
 
-Command callbacks load formatting modules only when invoked. Internal modules depend on concrete modules rather than calling back through `require("clwrap")`, so the public facade does not introduce dependency cycles. Calling `setup()` again replaces previous setup options and recreates a single save hook.
+Command callbacks load formatting modules only when invoked. Internal modules depend on concrete modules rather than calling back through `require("clwrap")`, so the public facade does not introduce dependency cycles. Calling `setup()` again replaces previous setup options and recreates the lifecycle hooks without duplicating them.

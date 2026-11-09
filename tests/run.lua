@@ -376,6 +376,58 @@ test("setup replaces earlier options and validates its input", function()
   clwrap.setup({})
 end)
 
+test("loading a supported buffer warns when its parser is missing", function()
+  local languages = require("clwrap.lang")
+  local lang = "clwrap_load_missing_parser"
+  local previous_filetype = languages.filetypes[lang]
+  local previous_spec = languages.specs[lang]
+  local previous_notify = vim.notify
+  local bufnr = make_buffer("lua", "-- unchanged\n")
+  vim.api.nvim_set_current_buf(bufnr)
+  vim.bo[bufnr].filetype = lang
+  languages.filetypes[lang] = lang
+  languages.specs[lang] = languages.specs.lua
+  local notifications = {}
+  vim.notify = function(message, level)
+    notifications[#notifications + 1] = { message = message, level = level }
+  end
+
+  clwrap.setup({})
+
+  vim.notify = previous_notify
+  languages.filetypes[lang] = previous_filetype
+  languages.specs[lang] = previous_spec
+  eq(1, #notifications)
+  eq(vim.log.levels.WARN, notifications[1].level)
+  assert(notifications[1].message:match(":TSInstall " .. lang), notifications[1].message)
+end)
+
+test("missing parsers warn once and then skip silently", function()
+  local languages = require("clwrap.lang")
+  local parser = require("clwrap.parser")
+  local lang = "clwrap_missing_parser"
+  local previous_spec = languages.specs[lang]
+  local previous_notify = vim.notify
+  local notifications = {}
+  languages.specs[lang] = languages.specs.lua
+  vim.notify = function(message, level)
+    notifications[#notifications + 1] = { message = message, level = level }
+  end
+
+  local first, first_err = parser.edits({ "-- unchanged" }, { lang = lang })
+  local second, second_err = parser.edits({ "-- unchanged" }, { lang = lang })
+  vim.notify = previous_notify
+  languages.specs[lang] = previous_spec
+
+  eq({}, first)
+  eq({}, second)
+  eq(nil, first_err)
+  eq(nil, second_err)
+  eq(1, #notifications)
+  eq(vim.log.levels.WARN, notifications[1].level)
+  assert(notifications[1].message:match(":TSInstall " .. lang), notifications[1].message)
+end)
+
 test("none-ls generator returns formatted buffer text", function()
   local src =
     "// Run documents the declaration in one long line that must wrap at the short width boundary.\nfunc Run() {}\n"

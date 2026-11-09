@@ -31,7 +31,8 @@ Optional configuration (calling setup again replaces earlier options): >lua
 
 Reflow standalone comments in the current buffer. Trailing comments, block
 comments, directives, generated Go files, and source with syntax errors are
-left unchanged.
+left unchanged. A missing parser shows one warning per language, then skips
+silently. Installing it with :TSInstall enables formatting without a restart.
 
 :ClwrapAll [root]                                                   *:ClwrapAll*
 

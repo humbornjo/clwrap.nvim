@@ -5,6 +5,26 @@ local M = {}
 
 -- Every supported grammar uses one of these three node names.
 local comment_types = { comment = true, line_comment = true, block_comment = true }
+local warned_missing_parsers = {}
+
+---Check parser availability, warning only the first time a language is unavailable.
+---@param lang string
+---@return boolean
+function M.available(lang)
+  local ok, installed = pcall(vim.treesitter.language.add, lang)
+  if ok and installed then
+    return true
+  end
+  if not warned_missing_parsers[lang] then
+    warned_missing_parsers[lang] = true
+    vim.notify(
+      ("clwrap: %s parser unavailable; install it with :TSInstall %s. Skipping comment formatting."):format(lang, lang),
+      vim.log.levels.WARN,
+      { title = "clwrap" }
+    )
+  end
+  return false
+end
 
 local function comment_nodes(root)
   local result = {}
@@ -145,6 +165,9 @@ function M.edits(lines, opts)
   local spec = languages.specs[lang]
   if not spec then
     return nil, ("clwrap: unsupported language %q"):format(tostring(lang))
+  end
+  if not M.available(lang) then
+    return {}
   end
 
   local source = table.concat(lines, "\n")
