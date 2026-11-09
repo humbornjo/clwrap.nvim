@@ -1,30 +1,30 @@
 # clwrap
 
-`clwrap` is a Lua Neovim plugin that reflows standalone `//` comments in Go, TypeScript, TSX, Rust, and Zig, and `--` comments in Lua. It uses Neovim's installed Tree-sitter parsers directly: no Go runtime, CGo, external executable, or subprocess.
+`clwrap` reflows standalone line comments with Neovim's installed Tree-sitter parsers. It supports `//` comments in Go, TypeScript, TSX, Rust, and Zig, plus `--` comments in Lua. Parsing and formatting run inside Neovim.
 
-- Documentation attached to top-level named declarations wraps to `doc_width` (default 75).
-- Other standalone comments wrap to `comment_width` (default 120).
+- Documentation attached to top-level named declarations wraps to `doc_width`, which defaults to 75.
+- Other standalone comments wrap to `comment_width`, which defaults to 120.
 - `tolerance` lets a doc-comment word that starts inside the boundary finish up to N columns beyond it.
-- Rust and Zig preserve `///` and `//!`; Lua preserves `---`; Markdown list continuations join into one line per item.
+- Rust and Zig preserve `///` and `//!`. Lua preserves `---`. Markdown list continuations join into one line per item.
 - Indentation and words use display columns. Tabs use the buffer's `tabstop`, including `.editorconfig`'s `tab_width`.
 - Generated Go files and buffers with syntax errors stay unchanged.
 
-Trailing comments, block comments (including JSDoc and Lua long comments), four-slash comments, tooling directives, and structured paragraphs retain their layout. Directive lines split a comment group, and the prose on either side still reflows. LuaLS `---@...` annotations, Luau `--!...` controls, and StyLua, Selene, and Luacheck directives are preserved.
+Trailing comments, block comments, four-slash comments, tooling directives, and structured paragraphs retain their layout. This includes JSDoc and Lua long comments. Directive lines split a comment group, and the prose on either side still reflows. clwrap also preserves LuaLS `---@...` annotations, Luau `--!...` controls, and StyLua, Selene, and Luacheck directives.
 
 ## Requirements
 
 - Neovim 0.10 or newer.
 - Tree-sitter parser libraries for `go`, `lua`, `typescript`, `tsx`, `rust`, and `zig`.
-- Optional: [none-ls.nvim](https://github.com/nvimtools/none-ls.nvim) for `vim.lsp.buf.format()` and format-on-save integration.
-- Optional: [virt-column.nvim](https://github.com/lukas-reineke/virt-column.nvim) for width discovery.
+- Optional [none-ls.nvim](https://github.com/nvimtools/none-ls.nvim) for `vim.lsp.buf.format()` and format-on-save integration.
+- Optional [virt-column.nvim](https://github.com/lukas-reineke/virt-column.nvim) for width discovery.
 
-Mason's `tree-sitter-cli` package is **not** used. Install parser libraries through `nvim-treesitter`:
+Install parser libraries through `nvim-treesitter`:
 
 ```vim
 :TSInstall go lua typescript tsx rust zig
 ```
 
-Run `:checkhealth clwrap` to check the parsers Neovim can load.
+Run `:checkhealth clwrap` to list the parsers Neovim can load.
 
 ## Installation
 
@@ -37,7 +37,7 @@ return {
 }
 ```
 
-`opts = {}` calls `require("clwrap").setup({})`; setup is only needed to change defaults. The `:Clwrap` command also works without calling setup.
+`opts = {}` calls `require("clwrap").setup({})`. Add setup when you want to change defaults. Plugin loading registers `:Clwrap` and `:ClwrapAll`.
 
 ## Usage
 
@@ -49,9 +49,9 @@ Run `:Clwrap` to reflow the current buffer. Run `:ClwrapAll` to format every sup
 :ClwrapAll ~/Repository/another-project
 ```
 
-The batch command skips dot/underscore directories, `vendor`, `node_modules`, and `testdata`. Modified buffers are skipped rather than saving unrelated edits. It reports formatted, unchanged, skipped, and failed counts; batch writes do not trigger save autocommands.
+The batch command skips directories whose names start with `.` or `_`, plus `vendor`, `node_modules`, and `testdata`. It leaves modified buffers untouched to avoid saving unrelated edits. It reports formatted, unchanged, skipped, and failed counts. Batch writes use `noautocmd`.
 
-The same operations are available from Lua:
+The Lua interface provides the same operations:
 
 ```lua
 require("clwrap").format()
@@ -61,15 +61,15 @@ require("clwrap").format(0, { doc_width = 75, comment_width = 120, tolerance = 2
 local report = require("clwrap").format_all()
 -- report.formatted, report.unchanged, report.skipped, report.errors
 
--- Compute edits without changing the buffer.
+-- Compute edits and keep the buffer unchanged.
 local edits, err = require("clwrap").edits(0)
 ```
 
-Formatting is idempotent. An unsupported filetype or syntax error returns an error and leaves the source untouched. A missing parser leaves the source unchanged and shows one warning per language with its `:TSInstall` command; later attempts skip silently. Installing the parser makes formatting available without restarting Neovim.
+Formatting is idempotent. clwrap reports unsupported filetypes and syntax errors as errors. For a missing parser, it warns once per language and shows the relevant `:TSInstall` command. These cases preserve the source. Later missing-parser attempts run silently and preserve the source. A newly installed parser takes effect in the current Neovim session.
 
 ### Format on save
 
-Enable clwrap's own `BufWritePre` hook during setup:
+Enable clwrap's `BufWritePre` hook during setup:
 
 ```lua
 require("clwrap").setup({
@@ -77,17 +77,17 @@ require("clwrap").setup({
 })
 ```
 
-It is disabled by default. Override the global setting for one buffer with:
+`format_on_save` is false by default. Override the global setting for one buffer with:
 
 ```lua
 vim.b.clwrap_format_on_save = false -- or true
 ```
 
-Use either this hook or an external formatter's save integration for clwrap, not both; running both is idempotent but parses the buffer twice.
+Choose one save integration for clwrap, either this hook or an external formatter's integration. Combining them is idempotent, and each integration parses the buffer.
 
 ### none-ls integration
 
-Add the supplied source to your existing `none-ls` configuration, preserving your other sources:
+Add the supplied source to your existing `none-ls` configuration and keep your other sources in the list:
 
 ```lua
 local null_ls = require("null-ls")
@@ -99,18 +99,18 @@ null_ls.setup({
 })
 ```
 
-The source runs in process and parses `none-ls`'s current formatter-chain text. `vim.lsp.buf.format()` and existing `none-ls` format-on-save integrations therefore work normally. Keep language formatting such as `gopls`, `rustfmt`, or Prettier enabled; clwrap only changes comments.
+The source runs in process and parses text produced by earlier formatters in the `none-ls` chain. You can call it through `vim.lsp.buf.format()` and existing `none-ls` save hooks. Keep language formatting such as `gopls`, `rustfmt`, or Prettier enabled. clwrap formats comments and preserves the surrounding source.
 
 ## Configuration
 
-All settings are optional. The example below shows the complete setup configuration and its defaults; copy only the options you want to change.
+All settings are optional. This example shows every setup option and its default. Copy the options you want to change.
 
 ```lua
 require("clwrap").setup({
-  -- Width for top-level declaration documentation. nil enables discovery; fallback: 75.
+  -- Width for top-level declaration documentation. nil enables discovery with a fallback of 75.
   doc_width = nil,
 
-  -- Width for other standalone comments. nil enables discovery; fallback: 120.
+  -- Width for other standalone comments. nil enables discovery with a fallback of 120.
   comment_width = nil,
 
   -- Let a doc-comment word finish this many columns beyond the wrap boundary.
@@ -130,21 +130,21 @@ require("clwrap").setup({
 })
 ```
 
-For the rare case where the Tree-sitter language differs from the buffer's filetype, pass `lang` to an individual format call. Automatic detection is recommended for normal use:
+If the Tree-sitter language differs from the buffer's filetype, pass `lang` to an individual format call. Otherwise, let clwrap detect the language:
 
 ```lua
 require("clwrap").format(0, { lang = "typescript" })
 ```
 
-Widths are resolved again for every format call:
+clwrap resolves widths for every format call:
 
-1. Per-call options, `b:clwrap_doc_width`, `b:clwrap_comment_width`, then values explicitly passed to `setup()`.
-2. `.editorconfig` `max_line_length` sets `comment_width`. Neovim's built-in EditorConfig support also applies `tab_width` to `tabstop`.
+1. Per-call options have highest priority, followed by `b:clwrap_doc_width`, `b:clwrap_comment_width`, and values passed to `setup()`.
+2. `.editorconfig` `max_line_length` sets `comment_width`. Neovim's EditorConfig integration also applies `tab_width` to `tabstop`.
 3. With two or more usable `virt-column` entries, the smallest sets `doc_width` and the largest sets `comment_width`. Relative entries such as `+1` resolve against `textwidth`, just as they do in virt-column.
-4. A single usable virt-column entry sets `comment_width`; `doc_width` becomes `min(75, comment_width)`.
-5. Otherwise, the defaults are 75 and 120. If only `comment_width` is known, doc width is capped at that value.
+4. A single usable virt-column entry sets `comment_width`. The doc width becomes `min(75, comment_width)`.
+5. Otherwise, clwrap uses 75 and 120. A known `comment_width` also caps the doc width.
 
-`virt-column`'s display can be enabled or disabled independently; its configured columns are still readable. Buffer-local explicit widths are useful for project or filetype overrides:
+clwrap reads virt-column's configured columns even when its guides are hidden. Set buffer-local widths for project or filetype overrides:
 
 ```lua
 vim.b.clwrap_doc_width = 80
@@ -157,19 +157,20 @@ vim.b.clwrap_comment_width = 100
 make test
 ```
 
-The tests run headlessly against the Tree-sitter parsers available to Neovim. TSX tests are skipped when its parser is not installed.
+The tests run headlessly against the Tree-sitter parsers available to Neovim. The test runner skips the TSX test when its parser is unavailable.
 
-The implementation is split by responsibility:
+The modules have the following responsibilities:
 
-- `lua/clwrap/init.lua` — the small public Lua interface and idempotent setup.
-- `lua/clwrap/formatter.lua` — buffer validation, option resolution, and formatting.
-- `lua/clwrap/parser.lua` — string parsing, comment-run extraction, and edit computation.
-- `lua/clwrap/edit.lua` — shared edit application and rendering.
-- `lua/clwrap/lang/` — the language registry and one Tree-sitter policy adapter per grammar.
-- `lua/clwrap/rules.lua` — language-neutral list and width rules.
-- `lua/clwrap/config.lua` — EditorConfig, virt-column, and override resolution.
-- `lua/clwrap/commands.lua` and `lifecycle.lua` — lazy command callbacks and buffer-loading/save lifecycle.
-- `lua/clwrap/batch.lua` — recursive discovery, safe file writes, and batch reports.
-- `lua/clwrap/none_ls.lua` — the optional in-process none-ls source.
+- `lua/clwrap/init.lua` exposes the public Lua functions and runs setup.
+- `lua/clwrap/formatter.lua` validates buffers, resolves options, and formats comments.
+- `lua/clwrap/parser.lua` parses source text, extracts comment runs, and computes edits.
+- `lua/clwrap/edit.lua` applies edits to buffers and renders edited source text.
+- `lua/clwrap/lang/` registers languages and holds one Tree-sitter policy adapter per grammar.
+- `lua/clwrap/rules.lua` implements the language-neutral list and width rules.
+- `lua/clwrap/config.lua` resolves EditorConfig, virt-column, and explicit overrides.
+- `lua/clwrap/commands.lua` registers commands with lazy callbacks.
+- `lua/clwrap/lifecycle.lua` manages buffer-loading and save hooks.
+- `lua/clwrap/batch.lua` finds files, writes changes, and reports batch results.
+- `lua/clwrap/none_ls.lua` provides the optional in-process none-ls source.
 
-Command callbacks load formatting modules only when invoked. Internal modules depend on concrete modules rather than calling back through `require("clwrap")`, so the public facade does not introduce dependency cycles. Calling `setup()` again replaces previous setup options and recreates the lifecycle hooks without duplicating them.
+Command callbacks load formatting modules when invoked. Internal modules depend on concrete modules directly, which prevents `require` cycles. Calling `setup()` again replaces earlier options and keeps one copy of each lifecycle hook.
