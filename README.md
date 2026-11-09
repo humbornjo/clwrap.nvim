@@ -35,18 +35,16 @@ Run `:checkhealth clwrap` to check the parsers Neovim can load.
 
 ## Installation
 
-With `lazy.nvim`, using this local checkout:
+With [lazy.nvim](https://github.com/folke/lazy.nvim):
 
 ```lua
 return {
-  {
-    dir = "~/Repository/clwrap",
-    opts = {},
-  },
+  "humbornjo/clwrap.nvim",
+  opts = {},
 }
 ```
 
-Replace `dir` with the plugin's repository URL if installing from Git. `opts = {}` calls `require("clwrap").setup({})`; setup is only needed to change defaults. The `:Clwrap` command also works without calling setup.
+`opts = {}` calls `require("clwrap").setup({})`; setup is only needed to change defaults. The `:Clwrap` command also works without calling setup.
 
 ## Usage
 
